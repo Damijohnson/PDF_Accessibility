@@ -1,5 +1,7 @@
 FROM public.ecr.aws/lambda/python:3.12
+
 USER root
+
 # Set environment variable for Lambda Task Root (optional but recommended)
 ENV LAMBDA_TASK_ROOT=/asset
 
@@ -10,13 +12,13 @@ COPY myapp.py /asset/
 COPY requirements.txt /tmp/
 
 # Upgrade pip to the latest version
-RUN pip3 install --upgrade pip
+RUN ["pip3", "install", "--upgrade", "pip"]
 
 # Install dependencies into /asset
-RUN pip3 install --no-cache-dir -r /tmp/requirements.txt -t /asset/
+RUN ["pip3", "install", "--no-cache-dir", "-r", "/tmp/requirements.txt", "-t", "/asset/"]
 
 # (Optional) Clean up /tmp to reduce image size
-RUN rm -rf /tmp/*
+RUN ["rm", "-rf", "/tmp/*"]
 
 # Set the working directory to /asset
 WORKDIR /asset
