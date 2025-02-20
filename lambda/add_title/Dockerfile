@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.12
+FROM amazon/aws-lambda-python:3.12-arm64
 
 USER root
 
