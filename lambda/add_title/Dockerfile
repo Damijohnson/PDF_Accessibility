@@ -1,10 +1,10 @@
 FROM public.ecr.aws/lambda/python:3.12
-
+USER root
 # Set environment variable for Lambda Task Root (optional but recommended)
 ENV LAMBDA_TASK_ROOT=/asset
 
-# Create /asset directory if it doesn't exist
-RUN mkdir -p /asset
+# Create /asset directory if it doesn't exist using the absolute path for mkdir
+RUN ["/bin/mkdir", "-p", "/asset"]
 
 # Copy function code to the /asset directory
 COPY myapp.py /asset/
