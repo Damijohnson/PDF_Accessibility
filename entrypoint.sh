@@ -41,7 +41,7 @@ aws configure set region "$AWS_REGION"
 echo "AWS configuration completed."
 
 # Clone the repository
-git clone --single-branch --branch docker-image-automation https://github.com/ASUCICREPO/PDF_Accessibility.git
+git clone --single-branch --branch deployment_dockerization https://github.com/ASUCICREPO/PDF_Accessibility.git
 cd ./PDF_Accessibility
 
 echo "Repository cloned successfully."
