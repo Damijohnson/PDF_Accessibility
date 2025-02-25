@@ -1,7 +1,7 @@
-# syntax=docker/dockerfile:1.4
+
 
 # Use an ARM-compatible Python base image
-FROM --platform=linux/arm64 python:3.9
+FROM python:3.9
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \

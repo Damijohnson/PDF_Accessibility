@@ -1,5 +1,5 @@
 # Use an official Node.js runtime as the base image, specifying the ARM architecture
-FROM --platform=linux/arm64 node:20
+FROM node:20
 
 # Set the working directory in the container
 WORKDIR /app
