@@ -12,13 +12,12 @@ COPY myapp.py /asset/
 COPY requirements.txt /tmp/
 
 # Upgrade pip to the latest version
-RUN ["pip", "install", "--upgrade", "pip"]
-
+RUN pip install --upgrade pip
 # Install dependencies into /asset
-RUN ["pip", "install", "--no-cache-dir", "-r", "/tmp/requirements.txt", "-t", "/asset/"]
+RUN pip install --no-cache-dir -r /tmp/requirements.txt -t /asset/
 
 # (Optional) Clean up /tmp to reduce image size
-RUN ["rm", "-rf", "/tmp/*"]
+RUN rm -rf /tmp/*
 
 # Set the working directory to /asset
 WORKDIR /asset
