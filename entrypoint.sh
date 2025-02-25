@@ -41,7 +41,7 @@ aws configure set region "$AWS_REGION"
 echo "AWS configuration completed."
 
 # Clone the repository
-git clone --single-branch --branch deployment_dockerization https://github.com/ASUCICREPO/PDF_Accessibility.git
+git clone --single-branch --branch docker-image-automation https://github.com/ASUCICREPO/PDF_Accessibility.git
 cd ./PDF_Accessibility
 
 echo "Repository cloned successfully."
@@ -79,51 +79,4 @@ export BUILDX_NO_DEFAULT_ATTESTATIONS=1
 
 cdk deploy
 
-
-# # Install AWS CDK if not installed
-# if ! command -v cdk &> /dev/null; then
-#     echo "AWS CDK not found. Installing..."
-#     npm install -g aws-cdk
-# fi
-
-# echo "AWS CDK installed."
-
-# # Bootstrap CDK
-# echo "Bootstrapping AWS CDK..."
-# cdk bootstrap
-
-# # Deploy the CDK stacks
-# echo "Deploying infrastructure..."
-# cdk deploy --require-approval never
-
-# echo "Infrastructure deployed successfully."
-
-# # Ensure Docker is installed inside the container
-# if ! command -v docker &> /dev/null; then
-#     echo "Docker not found. Installing Docker..."
-#     apt update && apt install -y docker.io
-# fi
-
-# # Start Docker daemon
-# service docker start
-
-# echo "Docker installed and started successfully."
-
-# # Build and push Docker images for both services
-# echo "Building and pushing Docker images..."
-
-# cd /app/autotag
-# DOCKER_BUILDKIT=1 docker build -t your-ecr-repo/autotag:latest .
-# aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin your-ecr-repo
-
-# docker push your-ecr-repo/autotag:latest
-
-# echo "Autotag image pushed."
-
-# cd /app/javascript_docker
-# DOCKER_BUILDKIT=1 docker build -t your-ecr-repo/javascript_docker:latest .
-# docker push your-ecr-repo/javascript_docker:latest
-
-# echo "Javascript Docker image pushed."
-
-# echo "Deployment process completed successfully!"
+/bin/bash
