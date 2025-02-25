@@ -1,4 +1,5 @@
-FROM python:3.10-slim-buster
+FROM arm64v8/python:3.10-slim-buster
+
 
 
 # Set environment variable for Lambda Task Root (optional but recommended)
@@ -12,7 +13,7 @@ COPY requirements.txt /tmp/
 
 # Upgrade pip to the latest version
 
-RUN pip install --upgrade pip
+RUN /bin/bash -c "pip install --upgrade pip"
 # Install dependencies into /asset
 RUN pip install --no-cache-dir -r /tmp/requirements.txt -t /asset/
 
