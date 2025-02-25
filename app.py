@@ -232,7 +232,7 @@ class PDFAccessibility(Stack):
 
         add_title_lambda = lambda_.Function(
             self, 'AddTitleLambda',
-            runtime=lambda_.Runtime.PYTHON_3_12,
+            runtime=lambda_.Runtime.PYTHON_3_10,
             handler='myapp.lambda_handler',
             code=lambda_.Code.from_docker_build('lambda/add_title'),
             timeout=Duration.seconds(900),
