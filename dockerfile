@@ -36,4 +36,4 @@ RUN curl -fsSL https://get.docker.com | sh
 # Set entrypoint to a startup script
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
-# ENTRYPOINT ["/entrypoint.sh"]
+ENTRYPOINT ["/entrypoint.sh"]

@@ -1,8 +1,5 @@
-FROM arm64v8/python:3.10-slim-buster
+FROM python:3.10-slim-buster
 
-
-
-USER root
 
 # Set environment variable for Lambda Task Root (optional but recommended)
 ENV LAMBDA_TASK_ROOT=/asset
@@ -26,4 +23,4 @@ RUN rm -rf /tmp/*
 WORKDIR /asset
 
 # Specify the Lambda handler
-# CMD ["myapp.lambda_handler"]
+CMD ["myapp.lambda_handler"]
