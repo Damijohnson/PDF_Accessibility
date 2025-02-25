@@ -20,6 +20,7 @@ done
 
 echo "Docker is up and running!"
 
+# Update DNS resolver
 echo "nameserver 8.8.8.8" >> /etc/resolv.conf
 
 # Prompt for AWS credentials
@@ -46,37 +47,36 @@ cd ./PDF_Accessibility
 
 echo "Repository cloned successfully."
 
-ls
-
-JSON_TEMPLATE='{
+# Create client credentials JSON
+cat <<EOF > client_credentials.json
+{
   "client_credentials": {
-    "PDF_SERVICES_CLIENT_ID": "<Your client ID here>",
-    "PDF_SERVICES_CLIENT_SECRET": "<Your secret ID here>"
+    "PDF_SERVICES_CLIENT_ID": "$ADOBE_CLIENT_ID",
+    "PDF_SERVICES_CLIENT_SECRET": "$ADOBE_CLIENT_SECRET"
   }
-}'
-
-# Replace placeholders and store in a file
-echo "$JSON_TEMPLATE" | jq --arg cid "$ADOBE_CLIENT_ID" --arg csec "$ADOBE_CLIENT_SECRET" \
-    '.client_credentials.PDF_SERVICES_CLIENT_ID = $cid | 
-     .client_credentials.PDF_SERVICES_CLIENT_SECRET = $csec' > client_credentials.json
+}
+EOF
 
 cat client_credentials.json
 
+# Store credentials in AWS Secrets Manager
 if aws secretsmanager create-secret --name /myapp/client_credentials --description "Client credentials for PDF services" --secret-string file://client_credentials.json; then
-    echo "Command create-secret succeeded"
+    echo "Secret created successfully."
 else
     aws secretsmanager update-secret --secret-id /myapp/client_credentials --description "Updated client credentials for PDF services" --secret-string file://client_credentials.json
-    echo "Command update-secret succeeded"
+    echo "Secret updated successfully."
 fi
 
+# Install Python dependencies
 pip install -r requirements.txt
-echo "Command pip install requirements succeeded"
+echo "Python dependencies installed successfully."
 
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com"
-echo "Command get-login-password succeeded"
+# Authenticate Docker with AWS ECR
+aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+echo "Docker authenticated with AWS ECR successfully."
 
-export BUILDX_NO_DEFAULT_ATTESTATIONS=1
-
+# Deploy with AWS CDK
 cdk deploy
 
+# Keep the container running
 /bin/bash

@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM python:3.10-slim-buster
+FROM --platform=linux/arm64 python:3.10-slim-buster
 
 # Set environment variables
 ENV AWS_REGION="us-east-1"
@@ -11,14 +11,17 @@ WORKDIR /app
 COPY . /app
 
 # Create required directories
-RUN mkdir -p /output/AutotagPDF
-RUN mkdir -p /output/ExtractTextInfoFromPDF
-RUN mkdir -p /output/zipfile/images
-
+RUN mkdir -p /output/AutotagPDF \
+    /output/ExtractTextInfoFromPDF \
+    /output/zipfile/images
 
 # Upgrade pip and install Python dependencies
-RUN python -m pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+RUN apt-get update && apt-get install -y gcc \
+    && python -m pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt \
+    && apt-get remove -y gcc \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Verify that the application files are present
 RUN ls -la /app

@@ -1,5 +1,9 @@
-FROM public.ecr.aws/lambda/python:3.10.2024.06.14.14
+# Use the official AWS Lambda Python 3.10 base image
+FROM public.ecr.aws/lambda/python:3.10
 
-COPY main.py /asset/
-COPY requirements.txt /tmp/
-RUN pip3 install -r /tmp/requirements.txt -t /asset
+# Copy function code and requirements
+COPY main.py /var/task/
+COPY requirements.txt /var/task/
+
+# Install dependencies into the Lambda task root
+RUN pip3 install -r /var/task/requirements.txt --target /var/task/
