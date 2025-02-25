@@ -1,6 +1,5 @@
 # Use an official Python runtime as a parent image
-FROM arm64v8/python:3.10-slim-buster
-
+FROM python:3.10-slim-buster
 
 # Set environment variables
 ENV AWS_REGION="us-east-1"
