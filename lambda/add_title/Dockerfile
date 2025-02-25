@@ -26,4 +26,4 @@ RUN rm -rf /tmp/*
 WORKDIR /asset
 
 # Specify the Lambda handler
-CMD ["myapp.lambda_handler"]
+# CMD ["myapp.lambda_handler"]
