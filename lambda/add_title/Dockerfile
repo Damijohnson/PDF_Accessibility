@@ -1,4 +1,4 @@
-FROM public.ecr.aws/lambda/python:3.10
+FROM python:3.10-slim-buster
 
 
 USER root
@@ -13,6 +13,7 @@ COPY myapp.py /asset/
 COPY requirements.txt /tmp/
 
 # Upgrade pip to the latest version
+
 RUN pip install --upgrade pip
 # Install dependencies into /asset
 RUN pip install --no-cache-dir -r /tmp/requirements.txt -t /asset/
