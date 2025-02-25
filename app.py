@@ -29,11 +29,37 @@ class PDFAccessibility(Stack):
 
         python_image_asset = ecr_assets.DockerImageAsset(self, "PythonImage",
                                                          directory="docker_autotag",
+                                                         network_mode=ecr_assets.NetworkMode.HOST,
                                                         platform=ecr_assets.Platform.LINUX_AMD64)
 
         javascript_image_asset = ecr_assets.DockerImageAsset(self, "JavaScriptImage",
                                                              directory="javascript_docker",
+                                                             network_mode=ecr_assets.NetworkMode.HOST,
                                                              platform=ecr_assets.Platform.LINUX_AMD64)
+        
+        # ---------------------------------------
+        lambda_add_title_image_asset = ecr_assets.DockerImageAsset(self, "AddTitleImage",
+                                                             directory="lambda/add_title",
+                                                             network_mode=ecr_assets.NetworkMode.HOST,
+                                                             platform=ecr_assets.Platform.LINUX_AMD64)
+        
+        accessibility_checker_before_remidiation_image_asset = ecr_assets.DockerImageAsset(self, "AccessibilityCheckerBeforeRemidiationImage",
+                                                                                           network_mode=ecr_assets.NetworkMode.HOST,
+                                                             directory="lambda/accessibility_checker_before_remidiation",
+                                                             platform=ecr_assets.Platform.LINUX_AMD64)
+        
+        accessability_checker_after_remidiation_image_asset = ecr_assets.DockerImageAsset(self, "AccessabilityCheckerAfterRemidiationImage",
+                                                                                          network_mode=ecr_assets.NetworkMode.HOST,
+                                                             directory="lambda/accessability_checker_after_remidiation",
+                                                             platform=ecr_assets.Platform.LINUX_AMD64)
+        
+        lambda_split_pdf_image_asset = ecr_assets.DockerImageAsset(self, "SplitPdfImage",
+                                                             directory="lambda/split_pdf",
+                                                             network_mode=ecr_assets.NetworkMode.HOST,
+                                                             platform=ecr_assets.Platform.LINUX_AMD64)
+        # ---------------------------------------
+
+
         # VPC with Public and Private Subnets
         vpc = ec2.Vpc(self, "MyVpc",
             max_azs=2,
@@ -230,17 +256,25 @@ class PDFAccessibility(Stack):
         else:
             lambda_arch = lambda_.Architecture.X86_64
 
-        add_title_lambda = lambda_.Function(
+        # add_title_lambda = lambda_.Function(
+        #     self, 'AddTitleLambda',
+        #     runtime=lambda_.Runtime.PYTHON_3_12,
+        #     handler='myapp.lambda_handler',
+        #     code=lambda_.Code.from_docker_build('lambda/add_title'),
+        #     code=lambda_.DockerImageCode.from_ecr(lambda_add_title_image_asset.repository),
+        #     timeout=Duration.seconds(900),
+        #     memory_size=1024,
+        #     # architecture=lambda_.Architecture.ARM_64
+        #     architecture=lambda_arch,
+        # )
+        add_title_lambda = lambda_.DockerImageFunction(
             self, 'AddTitleLambda',
-            runtime=lambda_.Runtime.PYTHON_3_10,
-            handler='myapp.lambda_handler',
-            code=lambda_.Code.from_docker_build('lambda/add_title'),
-            timeout=Duration.seconds(900),
+            code=lambda_.DockerImageCode.from_image_asset(directory='./lambda/add_title/', network_mode=ecr_assets.NetworkMode.HOST),
             memory_size=1024,
-            # architecture=lambda_.Architecture.ARM_64
-            architecture=lambda_.Architecture.X86_64
+            timeout=Duration.seconds(900),
+            architecture=lambda_arch
         )
-
+        add_title_lambda.node.add_dependency(lambda_add_title_image_asset)
         # Grant the Lambda function read/write permissions to the S3 bucket
         bucket.grant_read_write(add_title_lambda)
 
@@ -263,16 +297,27 @@ class PDFAccessibility(Stack):
         # Chain the tasks in the state machine
         # chain = map_state.next(java_lambda_task).next(add_title_lambda_task)
         
-        a11y_precheck = lambda_.Function(
+        # a11y_precheck = lambda_.Function(
+        #     self,'accessibility_checker_before_remidiation',
+        #     runtime=lambda_.Runtime.PYTHON_3_10,
+        #     handler='main.lambda_handler',
+        #     # code=lambda_.Code.from_docker_build('lambda/accessibility_checker_before_remidiation'),
+        #     code=lambda_.DockerImageCode.from_ecr(accessibility_checker_before_remidiation_image_asset.repository),
+        #     timeout=Duration.seconds(900),
+        #     memory_size=512,
+        #     architecture=lambda_arch,
+        # )
+
+        a11y_precheck = lambda_.DockerImageFunction(
             self,'accessibility_checker_before_remidiation',
-            runtime=lambda_.Runtime.PYTHON_3_10,
-            handler='main.lambda_handler',
-            code=lambda_.Code.from_docker_build('lambda/accessibility_checker_before_remidiation'),
+            code=lambda_.DockerImageCode.from_image_asset(directory='./lambda/accessibility_checker_before_remidiation/', network_mode=ecr_assets.NetworkMode.HOST),
             timeout=Duration.seconds(900),
             memory_size=512,
-            architecture=lambda_arch,
+            architecture=lambda_arch
         )
         
+        a11y_precheck.node.add_dependency(accessibility_checker_before_remidiation_image_asset)
+
         a11y_precheck.add_to_role_policy(
             iam.PolicyStatement(
             actions=["secretsmanager:GetSecretValue"],
@@ -289,15 +334,27 @@ class PDFAccessibility(Stack):
             output_path="$.Payload"
         )
 
-        a11y_postcheck = lambda_.Function(
+        # a11y_postcheck = lambda_.Function(
+        #     self,'accessibility_checker_after_remidiation',
+        #     runtime=lambda_.Runtime.PYTHON_3_10,
+        #     handler='main.lambda_handler',
+        #     # code=lambda_.Code.from_docker_build('lambda/accessability_checker_after_remidiation'),
+        #     code=lambda_.DockerImageCode.from_ecr(accessability_checker_after_remidiation_image_asset.repository),
+        #     timeout=Duration.seconds(900),
+        #     memory_size=512,
+        #     architecture=lambda_arch,
+        # )
+
+
+        a11y_postcheck = lambda_.DockerImageFunction(
             self,'accessibility_checker_after_remidiation',
-            runtime=lambda_.Runtime.PYTHON_3_10,
-            handler='main.lambda_handler',
-            code=lambda_.Code.from_docker_build('lambda/accessability_checker_after_remidiation'),
+            code=lambda_.DockerImageCode.from_image_asset(directory='./lambda/accessability_checker_after_remidiation/', network_mode=ecr_assets.NetworkMode.HOST),
             timeout=Duration.seconds(900),
             memory_size=512,
-            architecture=lambda_arch,
+            architecture=lambda_arch
         )
+
+        a11y_postcheck.node.add_dependency(accessability_checker_after_remidiation_image_asset)
         
         a11y_postcheck.add_to_role_policy(
             iam.PolicyStatement(
@@ -338,14 +395,23 @@ class PDFAccessibility(Stack):
                                          ))
         
         # Lambda Function
-        split_pdf_lambda = lambda_.Function(
+        # split_pdf_lambda = lambda_.Function(
+        #     self, 'SplitPDF',
+        #     runtime=lambda_.Runtime.PYTHON_3_10,
+        #     handler='main.lambda_handler',
+        #     code=lambda_.Code.from_docker_build("lambda/split_pdf"),
+        #     timeout=Duration.seconds(900),
+        #     memory_size=1024
+        # )
+
+        split_pdf_lambda = lambda_.DockerImageFunction(
             self, 'SplitPDF',
-            runtime=lambda_.Runtime.PYTHON_3_10,
-            handler='main.lambda_handler',
-            code=lambda_.Code.from_docker_build("lambda/split_pdf"),
+            code=lambda_.DockerImageCode.from_image_asset(directory='./lambda/split_pdf/', network_mode=ecr_assets.NetworkMode.HOST),
             timeout=Duration.seconds(900),
             memory_size=1024
         )
+
+        split_pdf_lambda.node.add_dependency(lambda_split_pdf_image_asset)
 
         split_pdf_lambda.add_to_role_policy(cloudwatch_logs_policy)
 
