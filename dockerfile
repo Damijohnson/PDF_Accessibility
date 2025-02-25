@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.4
+
 # Use an ARM-compatible Python base image
 FROM --platform=linux/arm64 python:3.9
 
@@ -23,6 +25,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash - \
 
 # Install AWS CDK
 RUN npm install -g aws-cdk
+RUN apt-get update && apt-get install -y bash
 
 # Set working directory
 WORKDIR /app
