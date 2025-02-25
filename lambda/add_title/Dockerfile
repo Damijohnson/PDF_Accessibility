@@ -1,4 +1,5 @@
-FROM amazon/aws-lambda-python:3.12-arm64
+FROM --platform=linux/amd64 python:3.10-slim-buster
+
 
 USER root
 

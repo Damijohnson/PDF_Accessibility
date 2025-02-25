@@ -238,7 +238,7 @@ class PDFAccessibility(Stack):
             timeout=Duration.seconds(900),
             memory_size=1024,
             # architecture=lambda_.Architecture.ARM_64
-            architecture=lambda_arch,
+            architecture=lambda_.Architecture.X86_64,
         )
 
         # Grant the Lambda function read/write permissions to the S3 bucket
