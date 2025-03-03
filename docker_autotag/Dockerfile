@@ -11,9 +11,13 @@ WORKDIR /app
 COPY . /app
 
 # Create required directories
-RUN mkdir -p /output/AutotagPDF
-RUN mkdir -p /output/ExtractTextInfoFromPDF
-RUN mkdir -p /output/zipfile/images
+# Debugging Step: Check available permissions on /output directory
+RUN mkdir -p /output && \
+    mkdir -p /output/AutotagPDF && \
+    mkdir -p /output/ExtractTextInfoFromPDF && \
+    mkdir -p /output/zipfile/images && \
+    chmod -R 777 /output
+
 
 
 # Upgrade pip and install Python dependencies
