@@ -12,11 +12,7 @@ COPY . /app
 
 # Create required directories
 # Debugging Step: Check available permissions on /output directory
-RUN mkdir -p /output && \
-    mkdir -p /output/AutotagPDF && \
-    mkdir -p /output/ExtractTextInfoFromPDF && \
-    mkdir -p /output/zipfile/images && \
-    chmod -R 777 /output
+RUN mkdir -p /output && 
 
 
 
