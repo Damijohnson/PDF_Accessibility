@@ -12,7 +12,7 @@ COPY . /app
 
 # Create required directories
 # Debugging Step: Check available permissions on /output directory
-RUN mkdir -p /output && 
+RUN mkdir -p /output 
 
 
 
