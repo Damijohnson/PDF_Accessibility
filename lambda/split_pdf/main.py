@@ -100,7 +100,7 @@ def split_pdf_into_pages(source_content, original_key, s3_client, bucket_name, p
             "s3_key": s3_key,
             "chunk_key": s3_key  # Key for the chunk
         })
-
+    print("testing")
     return chunks
 
 

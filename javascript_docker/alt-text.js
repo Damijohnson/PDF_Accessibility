@@ -117,7 +117,7 @@ const invokeModel = async (
 
     // Invoke the model with the payload and wait for the response.
     const command = new InvokeModelCommand({
-        modelId: "amazon.nova-pro-v1:0", // Replace with your model ID
+        modelId: "us.anthropic.claude-3-7-sonnet-20250219-v1:0", // Replace with your model ID
         contentType: "application/json",
         accept: "application/json",
         body: JSON.stringify(payload)

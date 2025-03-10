@@ -1,5 +1,6 @@
 # Use the official AWS Lambda Python 3.12 base image compatible with ARM64 architecture
-FROM public.ecr.aws/lambda/python:3.12-arm64
+FROM public.ecr.aws/lambda/python:3.12
+
 
 # Copy function code and requirements
 COPY myapp.py /var/task/

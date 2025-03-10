@@ -1,6 +1,6 @@
 # Use an official Python runtime as a parent image
-FROM python:3.10-slim-buster
-
+FROM --platform=linux/amd64 python:3.10-slim-buster
+USER root
 # Set environment variables
 ENV AWS_REGION="us-east-1"
 
@@ -9,11 +9,11 @@ WORKDIR /app
 
 # Copy the current directory contents into the container at /app
 COPY . /app
+# Debugging Step: Check available disk space
+RUN df -h
 
-# Create required directories
-RUN mkdir -p /output/AutotagPDF
-RUN mkdir -p /output/ExtractTextInfoFromPDF
-RUN mkdir -p /output/zipfile/images
+# Debugging Step: Check available permissions on /output directory
+RUN mkdir -p /output 
 
 
 # Upgrade pip and install Python dependencies

@@ -7,3 +7,4 @@ COPY requirements.txt /tmp/
 
 # Install dependencies into the Lambda task root
 RUN pip3 install -r /tmp/requirements.txt --target /var/task/
+CMD ["main.lambda_handler"]

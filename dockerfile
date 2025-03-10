@@ -1,6 +1,3 @@
-
-
-# Use an ARM-compatible Python base image
 FROM python:3.9
 
 # Install system dependencies
@@ -11,21 +8,22 @@ RUN apt-get update && apt-get install -y \
     less \
     sudo \
     fuse-overlayfs \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
-# Install AWS CLI v2 for ARM
+# Install AWS CLI v2
 RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip" \
     && unzip awscliv2.zip \
     && ./aws/install \
     && rm -rf awscliv2.zip aws
 
-# Install Node.js and npm for ARM
-RUN curl -fsSL https://deb.nodesource.com/setup_16.x | bash - \
+# Install Node.js and npm
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs
 
 # Install AWS CDK
 RUN npm install -g aws-cdk
-RUN apt-get update && apt-get install -y bash
+RUN pip install aws-cdk-lib
 
 # Set working directory
 WORKDIR /app
@@ -33,10 +31,10 @@ WORKDIR /app
 # Copy project files
 COPY . /app
 
-# Install Docker inside the container
+# Ensure Docker is installed inside the container
 RUN curl -fsSL https://get.docker.com | sh
 
 # Set entrypoint to a startup script
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-ENTRYPOINT ["/entrypoint.sh"]
+COPY deploy.sh /deploy.sh
+RUN chmod +x /deploy.sh
+ENTRYPOINT ["/deploy.sh"]
