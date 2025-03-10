@@ -1,24 +1,58 @@
 #!/bin/bash
-# This script:
-# 1. Prompts for the GitHub repo URL, CodeBuild project name,
-#    Docker username, and Docker password.
-# 2. Checks for (or creates) an IAM service role for CodeBuild.
-# 3. Creates a CodeBuild project using the "code-deploy-automation" branch.
-#    It passes the Docker credentials as environment variables.
-# 4. Starts a build of the project and then lists the projects before exiting.
+# This script sets Adobe API credentials in AWS Secrets Manager,
+# creates (or reuses) an IAM service role, creates a CodeBuild project using a
+# specific branch from a GitHub repository (code-deploy-automation), and starts a build.
 
-# Prompt for the GitHub repository URL (repository URL without branch appended)
-read -p "Enter the GitHub repository URL (e.g., https://github.com/ASUCICREPO/PDF_Accessibility): " GITHUB_URL
+# ------------------------- Configuration Variables -------------------------
 
-# Prompt for a CodeBuild project name
-read -p "Enter the CodeBuild project name: " PROJECT_NAME
+# Check if GitHub repository URL is provided; if not, prompt.
+if [ -z "$GITHUB_URL" ]; then
+    read -p "Enter the GitHub repository URL (e.g., https://github.com/ASUCICREPO/PDF_Accessibility): " GITHUB_URL
+fi
 
-# Prompt for Docker credentials
-read -p "Enter your Docker username: " DOCKER_USERNAME
-read -s -p "Enter your Docker password: " DOCKER_PASSWORD
-echo ""
+# Check if CodeBuild project name is provided; if not, prompt.
+if [ -z "$PROJECT_NAME" ]; then
+    read -p "Enter the CodeBuild project name: " PROJECT_NAME
+fi
 
-# Define a name for the IAM service role
+# Check if Adobe API credentials are provided as environment variables; if not, prompt.
+if [ -z "$ADOBE_CLIENT_ID" ]; then
+    read -p "Enter Adobe API client key: " ADOBE_CLIENT_ID
+fi
+
+if [ -z "$ADOBE_CLIENT_SECRET" ]; then
+    read -p "Enter Adobe API secret key: " ADOBE_CLIENT_SECRET
+fi
+
+# ------------------------- Adobe API Credentials Setup -------------------------
+
+# Create a JSON template with placeholders
+JSON_TEMPLATE='{
+  "client_credentials": {
+    "PDF_SERVICES_CLIENT_ID": "<Your client ID here>",
+    "PDF_SERVICES_CLIENT_SECRET": "<Your secret ID here>"
+  }
+}'
+
+# Replace placeholders with actual Adobe API credentials and store in client_credentials.json
+echo "$JSON_TEMPLATE" | jq --arg cid "$ADOBE_CLIENT_ID" --arg csec "$ADOBE_CLIENT_SECRET" \
+    '.client_credentials.PDF_SERVICES_CLIENT_ID = $cid | 
+     .client_credentials.PDF_SERVICES_CLIENT_SECRET = $csec' > client_credentials.json
+
+echo "Generated client_credentials.json:"
+cat client_credentials.json
+
+# Create or update the secret in AWS Secrets Manager
+if aws secretsmanager create-secret --name /myapp/client_credentials --description "Client credentials for PDF services" --secret-string file://client_credentials.json 2>/dev/null; then
+    echo "Secret created successfully in Secrets Manager."
+else
+    aws secretsmanager update-secret --secret-id /myapp/client_credentials --description "Updated client credentials for PDF services" --secret-string file://client_credentials.json
+    echo "Secret updated successfully in Secrets Manager."
+fi
+
+# ----------------------- CodeBuild Project Setup ---------------------------
+
+# Define a name for the IAM service role (unique per project)
 ROLE_NAME="${PROJECT_NAME}-codebuild-service-role"
 
 echo "Checking if IAM role '$ROLE_NAME' exists..."
@@ -70,39 +104,19 @@ EOF
 fi
 
 # Define the build environment settings using the amazonlinux-x86_64-standard:5.0 image
-# and add Docker credentials as environment variables.
-ENVIRONMENT=$(cat <<EOF
-{
-  "type": "LINUX_CONTAINER",
-  "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
-  "computeType": "BUILD_GENERAL1_SMALL",
-  "environmentVariables": [
-    {
-      "name": "DOCKER_USERNAME",
-      "value": "$DOCKER_USERNAME",
-      "type": "PLAINTEXT"
-    },
-    {
-      "name": "DOCKER_PASSWORD",
-      "value": "$DOCKER_PASSWORD",
-      "type": "PLAINTEXT"
-    }
-  ]
-}
-EOF
-)
+ENVIRONMENT='{"type": "LINUX_CONTAINER", "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0", "computeType": "BUILD_GENERAL1_SMALL"}'
 
 # Define the artifacts configuration (NO_ARTIFACTS in this example)
 ARTIFACTS='{"type": "NO_ARTIFACTS"}'
 
 # Create the source configuration JSON.
-# Use the repository URL without branch appended.
+# The repository URL is provided without the branch; the branch is specified separately.
 SOURCE='{"type": "GITHUB", "location": "'"$GITHUB_URL"'"}'
 
-# Specify the source version (branch) to use.
+# Specify the source version (branch) you want to build (deployment branch)
 SOURCE_VERSION="code-deploy-automation"
 
-echo "Creating CodeBuild project '$PROJECT_NAME' using branch '$SOURCE_VERSION' ..."
+echo "Creating CodeBuild project '$PROJECT_NAME' using GitHub repo $GITHUB_URL with branch '$SOURCE_VERSION' ..."
 aws codebuild create-project \
   --name "$PROJECT_NAME" \
   --source "$SOURCE" \
@@ -132,4 +146,5 @@ fi
 echo "Listing CodeBuild projects:"
 aws codebuild list-projects --output table
 
+# Auto exit the script
 exit 0
