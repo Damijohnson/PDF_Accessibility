@@ -11,10 +11,7 @@ WORKDIR /app
 COPY . /app
 
 # Create required directories
-RUN mkdir -p /output/AutotagPDF \
-    /output/ExtractTextInfoFromPDF \
-    /output/zipfile/images
-
+RUN mkdir -p /output/AutotagPDF /output/ExtractTextInfoFromPDF /output/zipfile/images
 
 # Upgrade pip and install Python dependencies
 RUN python -m pip install --upgrade pip

@@ -5,10 +5,7 @@ FROM node:20
 WORKDIR /app
 
 # Install required system dependencies for building native modules
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    python3 \
-    libsqlite3-dev
+RUN apt-get update && apt-get install -y build-essential python3 libsqlite3-dev
 
 # Copy package.json and packa
 
