@@ -220,6 +220,7 @@ async function generateAltText(imageObject, imageBuffer) {
         return response.content[0].text;
     } catch (error) {
         logger.info("Inside CATCH Block");
+        logger.info("CATCH Block error: ", error);
         throw error;
     }
 }
