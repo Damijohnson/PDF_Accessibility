@@ -29,7 +29,7 @@
  */
 
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { BedrockRuntimeClient, InvokeModelCommand, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 const fs = require('fs').promises;
 const fs_1 = require('fs');
 const winston = require('winston');
@@ -70,68 +70,235 @@ function sleep(ms) {
  * @returns {Promise<Object>} - A promise that resolves with the model's response, including the generated alt text.
  * @throws {Error} - Throws an error if invoking the model fails.
  */
-const invokeModel = async (
+// const invokeModel = async (
+//     prompt = "generate alt text for this image",
+//     imageBuffer = null,
+// ) => {
+//     // Create a new Bedrock Runtime client instance.
+//     const client = new BedrockRuntimeClient({ region: "us-east-1" });
+//     const model_arn_image = process.env.model_arn_image;
+    
+//     // Convert the image buffer to a base64-encoded string
+//     const inputImageBase64 = imageBuffer ? imageBuffer.toString('base64') : null;
+
+//     // Prepare the payload for the model.
+//     const payload = {
+//         system: [
+//           {
+//             text: "You are an intelligent assistant capable of analyzing images and answering questions about them."
+//           }
+//         ],
+//         messages: [
+//           {
+//             role: "user", // First turn should always be from the user
+//             content: [
+//               { 
+//                 text: prompt // Add your prompt about the image here
+//               },
+//               {
+//                 image: {
+//                   format: "png", // Specify the format of the image (e.g., jpeg, png)
+//                   source: {
+//                     bytes: inputImageBase64 // Include the Base64-encoded image data
+//                   }
+//                 }
+//               }
+//             ]
+//           }
+//         ],
+//         inferenceConfig: {
+//           max_new_tokens: 1000, // Adjust as needed (default is dynamic)
+//           temperature: 0.7, // Default temperature for randomness
+//           top_p: 0.9, // Default top-p sampling value
+//           top_k: 50, // Default top-k sampling value
+//           stopSequences: [] // Optional stop sequences if needed
+//         },
+//       };
+
+//     // Invoke the model with the payload and wait for the response.
+//     const command = new InvokeModelCommand({
+//         modelId: "us.anthropic.claude-3-7-sonnet-20250219-v1:0", // Replace with your model ID
+//         contentType: "application/json",
+//         accept: "application/json",
+//         body: JSON.stringify(payload)
+//       });
+//     const apiResponse = await client.send(command);
+
+//     // Decode and return the response(s)
+//     const decodedResponseBody = new TextDecoder("utf-8").decode(apiResponse.body);
+//     const responseBody = JSON.parse(decodedResponseBody);
+//     logger.info(`response of alt text: ${responseBody.output.message}`);
+//     return responseBody.output.message;
+// };
+
+
+const invokeNovaModel = async (
     prompt = "generate alt text for this image",
     imageBuffer = null,
-) => {
+  ) => {
     // Create a new Bedrock Runtime client instance.
-    logger.info("Inside invoke model function");
     const client = new BedrockRuntimeClient({ region: "us-east-1" });
     const model_arn_image = process.env.model_arn_image;
     
     // Convert the image buffer to a base64-encoded string
     const inputImageBase64 = imageBuffer ? imageBuffer.toString('base64') : null;
-
+  
     // Prepare the payload for the model.
     const payload = {
-        anthropic_version: "bedrock-2023-05-31",
-        max_tokens: 1000,
         system: [
           {
             text: "You are an intelligent assistant capable of analyzing images and answering questions about them."
           }
         ],
         messages: [
-            {
-                role: "user",
-                content: [
-                    { type: "text", text: prompt },
-                    inputImageBase64 ? { 
-                        type: "image", 
-                        source: { 
-                            type: "base64", 
-                            media_type: "image/png",  // ✅ Corrected for JPG
-                            data: inputImageBase64 
-                        } 
-                    } : null
-                ].filter(Boolean) // Remove null values
-            }
-        ]
-        // inferenceConfig: {
-        //   max_new_tokens: 1000, // Adjust as needed (default is dynamic)
-        //   temperature: 0.7, // Default temperature for randomness
-        //   top_p: 0.9, // Default top-p sampling value
-        //   top_k: 50, // Default top-k sampling value
-        //   stopSequences: [] // Optional stop sequences if needed
-        // },
+          {
+            role: "user", // First turn should always be from the user
+            content: [
+              {
+                text: prompt // Add your prompt about the image here
+              },
+              {
+                image: {
+                  format: "png", // Specify the format of the image (e.g., jpeg, png)
+                  source: {
+                    bytes: inputImageBase64 // Include the Base64-encoded image data
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        inferenceConfig: {
+          max_new_tokens: 1000, // Adjust as needed (default is dynamic)
+          temperature: 0.7, // Default temperature for randomness
+          top_p: 0.9, // Default top-p sampling value
+          top_k: 50, // Default top-k sampling value
+          stopSequences: [] // Optional stop sequences if needed
+        },
       };
-
+  
     // Invoke the model with the payload and wait for the response.
     const command = new InvokeModelCommand({
-        modelId: "anthropic.claude-3-sonnet-20240229-v1:0", //"amazon.nova-pro-v1:0", // Replace with your model ID
+        modelId: "amazon.nova-pro-v1:0", // Replace with your model ID
         contentType: "application/json",
         accept: "application/json",
         body: JSON.stringify(payload)
       });
     const apiResponse = await client.send(command);
-
+  
     // Decode and return the response(s)
     const decodedResponseBody = new TextDecoder("utf-8").decode(apiResponse.body);
     const responseBody = JSON.parse(decodedResponseBody);
-    logger.info("Sonnet 3.5")
-    logger.info(`response of alt text: ${responseBody.output.message}`);
+    console.log(`response of alt text: ${responseBody.output.message}`);
     return responseBody.output.message;
-};
+  };
+  
+  
+  const invokeLlamaModel = async (prompt = "Describe this image", imageBuffer = null) => {
+    if (!imageBuffer) {
+      throw new Error("Image buffer is null. Please provide a valid image file.");
+    }
+  
+    const client = new BedrockRuntimeClient({ region: "us-east-1" });
+  
+  
+    const messages = [
+      {
+        role: "user",
+        content: [
+          { text: prompt },
+          {
+            image: {
+              format: "png", // Replace with your file format if different
+              source: { bytes: imageBuffer },
+            },
+          },
+        ],
+      },
+    ];
+    const inferenceConfig = {
+      maxTokens: 4096,
+      temperature: 0,
+      topP: 0.1,
+    };
+  
+     try {
+       // Create a ConverseCommand to send to Bedrock
+       const command = new ConverseCommand({
+         modelId: "us.meta.llama3-2-90b-instruct-v1:0",
+         messages, // Pass the constructed messages object
+         inferenceConfig,
+       });
+   
+       // Send the command to Amazon Bedrock
+       const response = await client.send(command);
+   
+       // Extract and print the response content
+       const outputMessage = response.output.message.content[0].text;
+       console.log("Model Response:", outputMessage);
+     } catch (error) {
+       console.error("An error occurred while invoking the Converse API:", error.message || error);
+     }
+  };
+  
+  
+  
+  
+  
+  const invokeAnthorpicModel = async (prompt = "generate alt text for this image", imageBuffer = null) => {
+    if (!imageBuffer) {
+      throw new Error("Image buffer is null. Please provide a valid image file.");
+    }
+  
+    const client = new BedrockRuntimeClient({ region: "us-east-1" });
+  
+    const inputImageBase64 = Buffer.from(imageBuffer).toString('base64');
+  
+    const payload = {
+      anthropic_version: "bedrock-2023-05-31",
+      system: "You are an intelligent assistant capable of analyzing images and answering questions about them.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/png",
+                data: inputImageBase64
+              }
+            },
+            {
+              type: "text",
+              text: prompt
+            }
+          ]
+        }
+      ],
+      max_tokens: 1000,
+      temperature: 0.7,
+      top_p: 0.9,
+      top_k: 50,
+      stop_sequences: []
+    };
+  
+    const command = new InvokeModelCommand({
+      modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify(payload)
+    });
+  
+    const apiResponse = await client.send(command);
+    
+    const decodedResponseBody = new TextDecoder("utf-8").decode(apiResponse.body);
+    const responseBody = JSON.parse(decodedResponseBody);
+  
+    console.log("Response from Bedrock:", responseBody.content[0].text);
+    
+    return responseBody;
+  };
 
 /**
  * Generates WCAG 2.1-compliant alt text for an image based on its content and the provided prompt.
@@ -214,13 +381,12 @@ async function generateAltText(imageObject, imageBuffer) {
     `;
 
     try {
-        logger.info("Inside TRY Block");
-        const response = await invokeModel(prompt, imageBuffer);
+        logger.info(`generating alt text for image using Sonnet 3.5 model new updated`);
+        const response = await invokeAnthorpicModel(prompt, imageBuffer);
         
         return response.content[0].text;
     } catch (error) {
-        logger.info("Inside CATCH Block");
-        logger.info("CATCH Block error: ", error);
+        logger.info("Inside CATCH BLOCK: ", error);
         throw error;
     }
 }
