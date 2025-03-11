@@ -1,3 +1,4 @@
+.gitignore
 *.swp
 package-lock.json
 __pycache__
@@ -16,3 +17,7 @@ __pycache__/
 *.pyc
 javascript_docker/node_modules
 lambda/add_title/venv
+node_modules
+football.png
+temp.mjs
+package.json
