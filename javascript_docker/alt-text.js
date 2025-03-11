@@ -284,7 +284,7 @@ const invokeNovaModel = async (
     };
   
     const command = new InvokeModelCommand({
-      modelId: "anthropic.claude-3-sonnet-20240229-v1:0",
+      modelId: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
       contentType: "application/json",
       accept: "application/json",
       body: JSON.stringify(payload)
@@ -381,7 +381,7 @@ async function generateAltText(imageObject, imageBuffer) {
     `;
 
     try {
-        logger.info(`generating alt text for image using Sonnet 3.5 model new updated`);
+        logger.info(`generating alt text for image using Sonnet 3.7 model new updated`);
         const response = await invokeAnthorpicModel(prompt, imageBuffer);
         
         return response.content[0].text;
