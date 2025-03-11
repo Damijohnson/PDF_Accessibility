@@ -75,6 +75,7 @@ const invokeModel = async (
     imageBuffer = null,
 ) => {
     // Create a new Bedrock Runtime client instance.
+    logger.info("Inside invoke model function");
     const client = new BedrockRuntimeClient({ region: "us-east-1" });
     const model_arn_image = process.env.model_arn_image;
     
@@ -213,11 +214,12 @@ async function generateAltText(imageObject, imageBuffer) {
     `;
 
     try {
+        logger.info("Inside TRY Block");
         const response = await invokeModel(prompt, imageBuffer);
         
         return response.content[0].text;
     } catch (error) {
-      
+        logger.info("Inside CATCH Block");
         throw error;
     }
 }
