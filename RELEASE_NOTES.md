@@ -8,7 +8,7 @@
 ## Key Updates:
 
 ### 1. New Feature: Pix2Tex Integration  
-- Integrated Pix2Tex for improved OCR capabilities for mathamatical images.
+- Integrated Pix2Tex for improved OCR capabilities for mathematical images.
 
 ### 2. Multiple LLM Support  
 - Added support for multiple Large Language Models to enhance processing flexibility.
