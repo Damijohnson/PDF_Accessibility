@@ -1,0 +1,62 @@
+version: '3.9'
+
+services:
+  lambda-add-title:
+    platform: linux/amd64
+    build:
+      context: ./lambda/add_title
+      dockerfile: Dockerfile
+      
+    image: lambda-add-title:latest
+
+  lambda-accessibility-checker-before:
+    platform: linux/amd64
+    build:
+      context: ./lambda/accessibility_checker_before_remidiation
+      dockerfile: Dockerfile
+     
+    image: lambda-accessibility-checker-before:latest
+
+  lambda-accessibility-checker-after:
+    platform: linux/amd64
+    build:
+      context: ./lambda/accessability_checker_after_remidiation
+      dockerfile: Dockerfile
+    image: lambda-accessibility-checker-after:latest
+
+  lambda-split-pdf:
+    platform: linux/amd64
+    build:
+      context: ./lambda/split_pdf
+      dockerfile: Dockerfile
+    image: lambda-split-pdf:latest
+
+  python-ecs-task:
+    build:
+      context: ./docker_autotag
+      dockerfile: Dockerfile
+    image: ecs-python-task:latest
+
+  javascript-ecs-task:
+    build:
+      context: ./javascript_docker
+      dockerfile: Dockerfile
+    image: ecs-javascript-task:latest
+
+  cdk-deployer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION}
+    depends_on:
+      - lambda-add-title
+      - lambda-accessibility-checker-before
+      - lambda-accessibility-checker-after
+      - lambda-split-pdf
+      - python-ecs-task
+      - javascript-ecs-task
