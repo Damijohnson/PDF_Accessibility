@@ -68,8 +68,13 @@ import sqlite3
 import pymupdf
 import json
 import re
+import base64
 import zipfile
+import subprocess
 from pypdf import PdfReader, PdfWriter
+import base64
+import io
+from PIL import Image
 
 from adobe.pdfservices.operation.auth.service_principal_credentials import ServicePrincipalCredentials
 from adobe.pdfservices.operation.exception.exceptions import ServiceApiException, ServiceUsageException, SdkException
@@ -86,10 +91,12 @@ from adobe.pdfservices.operation.pdfjobs.jobs.autotag_pdf_job import AutotagPDFJ
 from adobe.pdfservices.operation.pdfjobs.params.autotag_pdf.autotag_pdf_params import AutotagPDFParams
 from adobe.pdfservices.operation.pdfjobs.result.autotag_pdf_result import AutotagPDFResult
 
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
 s3 = boto3.client('s3')
+
 
 def download_file_from_s3(bucket_name,file_base_name, file_key, local_path):
     """
@@ -376,7 +383,7 @@ def is_bbox_match(api_bbox, excel_bbox,tol=7):
             diff_x <= tol and diff_y <= tol)
 
 def create_sqlite_db(by_page, filename, images_output_dir, object_ids, image_paths,
-                     page_num_img, parsed_cordinates, bucket_name, s3_folder_autotag, file_key, object_ids_cords):
+                     page_num_img, parsed_cordinates, bucket_name, s3_folder_autotag, file_key, object_ids_cords, is_math_recognizable):
     # Build the SQLite database file path and create a new database.
     db_path = os.path.join(images_output_dir, "temp_images_data.db")
     if os.path.exists(db_path):
@@ -391,7 +398,8 @@ def create_sqlite_db(by_page, filename, images_output_dir, object_ids, image_pat
             prev TEXT,
             current TEXT,
             next TEXT,
-            context TEXT
+            context TEXT,
+            math_formula TEXT
         )
     """)
     
@@ -399,7 +407,7 @@ def create_sqlite_db(by_page, filename, images_output_dir, object_ids, image_pat
     assigned_candidates = set()
 
     # Process each Excel row (each image from Excel)
-    for objid, pg_num, excel_bbox in zip(object_ids, page_num_img, object_ids_cords):
+    for objid, pg_num, excel_bbox, is_math in zip(object_ids, page_num_img, object_ids_cords, is_math_recognizable):
         if pg_num not in by_page:
             logging.warning(f"Page {pg_num} not found in API data for file {filename}.")
             context = "No API data for this page."
@@ -485,12 +493,13 @@ def create_sqlite_db(by_page, filename, images_output_dir, object_ids, image_pat
         print(" ======================")
         # Insert the data into the SQLite database.
         cursor.execute("""
-            INSERT INTO image_data (objid, img_path, context)
-            VALUES (?, ?, ?)
+            INSERT INTO image_data (objid, img_path, context, math_formula)
+            VALUES (?, ?, ?,?)
         """, (
             current_candidate["objid"],
             current_candidate["filePaths"][0].split("/")[-1],
-            context
+            context,
+            is_math
         ))
         print("Added in the database: ", current_candidate["objid"],
             current_candidate["filePaths"][0].split("/")[-1])
@@ -504,7 +513,143 @@ def create_sqlite_db(by_page, filename, images_output_dir, object_ids, image_pat
                      f'{s3_folder_autotag}/{file_key}_temp_images_data.db')
     logging.info(f'Filename : {filename} | Uploaded SQLite DB to S3')
 
+def preprocess_image(img_path):
+    # Open the image using Pillow
+    img = Image.open(img_path)
+    width, height = img.size
 
+    # Calculate aspect ratios
+    aspect_ratio = width / height
+    inverse_aspect_ratio = height / width
+
+    # If width is too wide compared to height, crop the width
+    if aspect_ratio > 20:
+        new_width = int(20 * height)
+        left = (width - new_width) // 2  # center crop
+        right = left + new_width
+        img = img.crop((left, 0, right, height))
+        print(f"Cropped width from {width} to {new_width}")
+    # If height is too tall compared to width, crop the height
+    elif inverse_aspect_ratio > 20:
+        new_height = int(20 * width)
+        top = (height - new_height) // 2  # center crop
+        bottom = top + new_height
+        img = img.crop((0, top, width, bottom))
+        print(f"Cropped height from {height} to {new_height}")
+    else:
+        print("Image aspect ratio is within the allowed limit.")
+
+    # Convert the image to bytes and then base64 encode it
+    buffered = io.BytesIO()
+    img.save(buffered, format="PNG")
+    base64_string = base64.b64encode(buffered.getvalue()).decode("utf-8")
+    return base64_string
+
+def is_math_formula(img_path):
+    # Create a Bedrock Runtime client in the AWS Region of your choice.
+    client = boto3.client("bedrock-runtime", region_name="us-east-1")
+
+    # Set the Nova Micro model ID.
+    MODEL_ID = "us.amazon.nova-lite-v1:0"
+
+    
+    # with open(img_path, "rb") as image_file:
+    #     image_bytes = image_file.read()
+    #     base64_bytes = base64.b64encode(image_bytes)
+    #     base64_string = base64_bytes.decode("utf-8")
+    base64_string = preprocess_image(img_path)
+
+    # Define the system prompt.
+    system_messages = [
+        {"text": "you are a model that is expert is recognizing if the given image contains mathematical formula or not? and if it can be converted to formula latex code? answer in yes or no only. STRICTLY ANSWER FROM 'YES' or 'NO'. no other single word"}
+    ]
+    prompt = """Your task is to tell me whether the given image contains the mathematical formula or not? and if it can be converted to formula latex code? I will be using one machine learning model to perform OCR on it to extract latex code from the image. I want you to keep in mind capabilities current state of the art models. they are good but not 100% accurate.By the way I am using the state of the art open source machine learning model from pix2tex library in python so keep in mind its limitations and strenght. so if you feel this image will be complicate for my model to extract latex code then you can say no. but if you feel this image is simple and can be converted to latex code then you can say yes. STRICTLY ANSWER FROM 'YES' or 'NO'. no other single word"""
+    # Define the user message with both the image and a text prompt.
+    user_messages = [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "image": {
+                        "format": "png",
+                        "source": {"bytes": base64_string}
+                    }
+                },
+                {
+                    "text": prompt
+                }
+            ]
+        }
+    ]
+
+    # Set the inference configuration parameters.
+    inference_config = {"maxTokens": 300, "topP": 0.1, "topK": 20, "temperature": 0.3}
+
+    # Construct the request payload.
+    payload = {
+        "schemaVersion": "messages-v1",
+        "system": system_messages,
+        "messages": user_messages,
+        "inferenceConfig": inference_config,
+    }
+    try:
+        # Invoke the Nova Micro model.
+        response = client.invoke_model(modelId=MODEL_ID, body=json.dumps(payload))
+        response_body = json.loads(response["body"].read())
+    except Exception as e:
+        print(f"Error invoking model: {e}")
+        return False
+    # # Print the full response.
+    # print("Full Response:")
+    # print(json.dumps(response_body, indent=2))
+
+    # Extract and print the text output from the response.
+    text_output = response_body["output"]["message"]["content"][0].get("text", "")
+    # print("\nResponse Content Text:")
+    # print(text_output)
+
+    if "yes" in text_output.lower():
+        return True
+    else:
+        return False
+    
+def convert_to_latex(image_path):
+    """
+    Call the pix2tex wrapper script using a specific virtual environment
+    
+    Args:
+        image_path (str): Path to the image file to process
+        
+    Returns:
+        dict: Result dictionary with success status and either latex or error message
+    """
+    try:
+        # Path to the virtual environment
+        venv_path = "/app/venv"  # Adjust this to your virtual environment path
+        
+          
+        activate_cmd = f"source {venv_path}/bin/activate"
+        command = f"{activate_cmd} && python math_ocr.py '{image_path}'"
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            shell=True,
+            executable="/bin/bash"
+        )
+        print("got the result")
+        if result.returncode != 0:
+            print("return code not 0")
+            return {"success": False, "error": f"Process failed: {result.stderr}"}
+        print("printing the result: ",result.stdout)
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {"success": False, "error": f"Failed to parse output: {result.stdout}"}
+    except subprocess.CalledProcessError as e:
+        return {"success": False, "error": f"Process error: {e}"}
+    except Exception as e:
+        return {"success": False, "error": f"Unexpected error: {str(e)}"}
+    
 def extract_images_from_excel(filename, figure_path, autotag_report_path, images_output_dir, bucket_name, s3_folder_autotag, file_key):
     """
     Extract images from an Excel file and save them to a directory and upload them to S3.
@@ -518,55 +663,97 @@ def extract_images_from_excel(filename, figure_path, autotag_report_path, images
         s3_folder_autotag (str): The S3 folder for autotag output.
         file_key (str): File key for S3 naming.
     """
-    logging.info(f'Filename : {filename} | Extracting the images from excel file...')
-    
-    # Load the workbook and get the sheet (Images are in the "Figures" sheet)
-    wb = openpyxl.load_workbook(autotag_report_path)
-    wb.close()
-    sheet = wb["Figures"]
-    logging.info(f'Filename : {filename} | Sheet: {sheet.title}')
-    logging.info(f'Filename : {filename} | Number of images: {len(sheet._images)}')
-    
-    # Load the workbook into a DataFrame for additional details.
-    df = pd.read_excel(autotag_report_path, sheet_name="Figures")
-    logging.info(f'Filename : {filename} | DF loaded: {str(df)}')
-    # Get the object IDs
-    object_ids = df["Unnamed: 4"].dropna().values[1:]
-    # Get page numbers for images (adjusting for 0-indexing)
-    page_num_img = df["Figures and Alt Text (excludes artifacts and decorative images)"].dropna().values[2:].astype(int)
-    page_num_img = [int(i)-1 for i in page_num_img]
-    
-    os.makedirs(images_output_dir, exist_ok=True)
+    try:
+        logging.info(f'Filename : {filename} | Extracting the images from excel file...')
+        
+        # Load the workbook and get the sheet (Images are in the "Figures" sheet)
+        wb = openpyxl.load_workbook(autotag_report_path)
+        wb.close()
+        sheet = wb["Figures"]
+        logging.info(f'Filename : {filename} | Sheet: {sheet.title}')
+        logging.info(f'Filename : {filename} | Number of images: {len(sheet._images)}')
+        
+        # Load the workbook into a DataFrame for additional details.
+        df = pd.read_excel(autotag_report_path, sheet_name="Figures")
+        logging.info(f'Filename : {filename} | DF loaded: {str(df)}')
+        # Get the object IDs
+        object_ids = df["Unnamed: 4"].dropna().values[1:]
+        # Get page numbers for images (adjusting for 0-indexing)
+        page_num_img = df["Figures and Alt Text (excludes artifacts and decorative images)"].dropna().values[2:].astype(int)
+        page_num_img = [int(i)-1 for i in page_num_img]
+        
+        os.makedirs(images_output_dir, exist_ok=True)
 
-    by_page = extract_images_from_extract_api(filename)
-    image_paths = []
-    coordinates = df["Unnamed: 3"].dropna().values[1:]
-    parsed_cordinates = [ast.literal_eval(item) for item in coordinates]
-    object_ids_cords = [(objid, cords) for objid, cords in zip(object_ids, parsed_cordinates)]
-    print("Object IDs and Coordinates:", object_ids_cords)
-    logging.info(f'Filename : {filename} | Sheet: {sheet} , Sheet Images: {sheet._images}')
+        by_page = extract_images_from_extract_api(filename)
+        image_paths = []
+        coordinates = df["Unnamed: 3"].dropna().values[1:]
+        parsed_cordinates = [ast.literal_eval(item) for item in coordinates]
+        object_ids_cords = [(objid, cords) for objid, cords in zip(object_ids, parsed_cordinates)]
+        print("Object IDs and Coordinates:", object_ids_cords)
+        logging.info(f'Filename : {filename} | Sheet: {sheet} , Sheet Images: {sheet._images}')
 
-    # Loop through all images in the sheet and save them locally.
-    for idx, img in enumerate(sheet._images):
-        img_type = img.path.split('.')[-1]
-        img_path = os.path.join(images_output_dir, f'image_{idx + 1}.{img_type}')
-        image_paths.append(img_path)
-        with open(img_path, 'wb') as f:
-            f.write(img._data())
-        logging.info(f'Filename : {filename} | Image {idx + 1} saved as {img_path}')
-    
-    image_paths = [
-        os.path.join(figure_path, f)
-        for f in sorted(os.listdir(figure_path), key=natural_sort_key)
-    ]
-    
-    for img_path in image_paths:
-        s3.upload_file(img_path, bucket_name, f'{s3_folder_autotag}/images/{file_key}_{os.path.basename(img_path)}')
-        logging.info(f'Filename : {filename} | Uploaded image to S3')
-    logging.info(f'Filename : {filename} | Object IDs: {object_ids} : Image Paths: {image_paths}')
+        # Loop through all images in the sheet and save them locally.
+        for idx, img in enumerate(sheet._images):
+            img_type = img.path.split('.')[-1]
+            img_path = os.path.join(images_output_dir, f'image_{idx + 1}.{img_type}')
+            image_paths.append(img_path)
+            with open(img_path, 'wb') as f:
+                f.write(img._data())
+            logging.info(f'Filename : {filename} | Image {idx + 1} saved as {img_path}')
+        
+        image_paths = [
+            os.path.join(figure_path, f)
+            for f in sorted(os.listdir(figure_path), key=natural_sort_key)
+        ]
+        print("Image Paths:", image_paths)
+        logging.info(f'Filename : {filename} | Image Paths: {image_paths}')
+        is_math_recognizable = []
+        for img_path in image_paths:
+            if is_math_formula(img_path):
+                logging.info(f'Filename : {filename} | Image {img_path} contains mathematical formula')
+                latex_code = convert_to_latex(img_path)
+                is_math_recognizable.append(latex_code["latex"])
+            else:
+                logging.info(f'Filename : {filename} | Image {img_path} does not contain mathematical formula')
+                
+                is_math_recognizable.append("no")
+        print("is_math_recognizable:", is_math_recognizable)
+        print("lenght of is_math_recognizable:", len(is_math_recognizable))
+        for img_path in image_paths:
+            s3.upload_file(img_path, bucket_name, f'{s3_folder_autotag}/images/{file_key}_{os.path.basename(img_path)}')
+            logging.info(f'Filename : {filename} | Uploaded image to S3')
+        logging.info(f'Filename : {filename} | Object IDs: {object_ids} : Image Paths: {image_paths}')
 
-    create_sqlite_db(by_page, filename, images_output_dir, object_ids, image_paths, page_num_img, parsed_cordinates, bucket_name, s3_folder_autotag, file_key, object_ids_cords)
-
+        create_sqlite_db(by_page, filename, images_output_dir, object_ids, image_paths, page_num_img, parsed_cordinates, bucket_name, s3_folder_autotag, file_key, object_ids_cords, is_math_recognizable)
+    except Exception as e:
+        db_path = os.path.join(images_output_dir, "temp_images_data.db")
+        if os.path.exists(db_path):
+            os.remove(db_path)
+            logging.info(f'Filename : {filename} | Removed existing SQLite DB')
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS image_data (
+            objid TEXT,
+            img_path TEXT,
+            prev TEXT,
+            current TEXT,
+            next TEXT,
+            context TEXT,
+            math_formula TEXT
+        )
+            
+        """)
+        
+        conn.commit()
+        conn.close()
+        logging.info(f'Filename : {filename} | SQLite DB created with no image data')
+        
+        # Upload the SQLite DB to S3.
+        s3.upload_file(os.path.join(images_output_dir, "temp_images_data.db"),
+                        bucket_name,
+                        f'{s3_folder_autotag}/{file_key}_temp_images_data.db')
+        logging.info(f'Filename : {filename} | Uploaded SQLite DB to S3 With No Images')
 
 def main():
     """

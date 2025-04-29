@@ -12,11 +12,18 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install AWS CLI v2
-RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip" \
-    && unzip awscliv2.zip \
-    && ./aws/install \
-    && rm -rf awscliv2.zip aws
-
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        CLI_ARCH="x86_64"; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        CLI_ARCH="aarch64"; \
+    else \
+        echo "Unsupported architecture: $ARCH"; exit 1; \
+    fi && \
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-${CLI_ARCH}.zip" -o "awscliv2.zip" && \
+    unzip awscliv2.zip && \
+    ./aws/install && \
+    rm -rf awscliv2.zip aws
 # Install Node.js and npm
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs
@@ -31,10 +38,6 @@ WORKDIR /app
 # Copy project files
 COPY . /app
 
-# Ensure Docker is installed inside the container
-RUN curl -fsSL https://get.docker.com | sh
-
-# Set entrypoint to a startup script
 COPY deploy.sh /deploy.sh
 RUN chmod +x /deploy.sh
 ENTRYPOINT ["/deploy.sh"]

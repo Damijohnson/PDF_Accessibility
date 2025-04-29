@@ -47,12 +47,12 @@ export AWS_DEFAULT_REGION
 aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
 # Create Lambda function repositories
 for repo in lambda-add-title lambda-accessibility-checker-before lambda-accessibility-checker-after lambda-split-pdf; do
-  aws ecr create-repository --repository-name $repo --image-scanning-configuration scanOnPush=true --region $AWS_DEFAULT_REGION
+  aws ecr create-repository --repository-name $repo --image-scanning-configuration scanOnPush=true --region $AWS_DEFAULT_REGION --no-cli-pager
 done
 
 # Create ECS task repositories
 for repo in ecs-python-task ecs-javascript-task; do
-  aws ecr create-repository --repository-name $repo --image-scanning-configuration scanOnPush=true --region $AWS_DEFAULT_REGION
+  aws ecr create-repository --repository-name $repo --image-scanning-configuration scanOnPush=true --region $AWS_DEFAULT_REGION --no-cli-pager
 done
 
 # Push Lambda images to ECR
@@ -68,4 +68,4 @@ for service in ecs-python-task ecs-javascript-task; do
 done
 
 # Deploy CDK stack using the uploaded images from ECR.
-cdk destroy --force && cdk deploy --require-approval never
+cdk deploy --require-approval never

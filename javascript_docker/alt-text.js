@@ -29,7 +29,7 @@
  */
 
 const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { BedrockRuntimeClient, InvokeModelCommand } = require('@aws-sdk/client-bedrock-runtime');
+const { BedrockRuntimeClient, InvokeModelCommand, ConverseCommand } = require('@aws-sdk/client-bedrock-runtime');
 const fs = require('fs').promises;
 const fs_1 = require('fs');
 const winston = require('winston');
@@ -39,6 +39,7 @@ const { promisify } = require('util');
 const path = require('path');
 const { PDFDocument, PDFName, PDFDict, PDFString } = require('pdf-lib');
 const Database = require('better-sqlite3');
+const sharp = require('sharp');
 
 const pipeline = promisify(stream.pipeline);
 
@@ -70,17 +71,79 @@ function sleep(ms) {
  * @returns {Promise<Object>} - A promise that resolves with the model's response, including the generated alt text.
  * @throws {Error} - Throws an error if invoking the model fails.
  */
-const invokeModel = async (
+// const invokeModel = async (
+//     prompt = "generate alt text for this image",
+//     imageBuffer = null,
+// ) => {
+//     // Create a new Bedrock Runtime client instance.
+//     const client = new BedrockRuntimeClient({ region: "us-east-1" });
+//     const model_arn_image = process.env.model_arn_image;
+    
+//     // Convert the image buffer to a base64-encoded string
+//     const inputImageBase64 = imageBuffer ? imageBuffer.toString('base64') : null;
+
+//     // Prepare the payload for the model.
+//     const payload = {
+//         system: [
+//           {
+//             text: "You are an intelligent assistant capable of analyzing images and answering questions about them."
+//           }
+//         ],
+//         messages: [
+//           {
+//             role: "user", // First turn should always be from the user
+//             content: [
+//               { 
+//                 text: prompt // Add your prompt about the image here
+//               },
+//               {
+//                 image: {
+//                   format: "png", // Specify the format of the image (e.g., jpeg, png)
+//                   source: {
+//                     bytes: inputImageBase64 // Include the Base64-encoded image data
+//                   }
+//                 }
+//               }
+//             ]
+//           }
+//         ],
+//         inferenceConfig: {
+//           max_new_tokens: 1000, // Adjust as needed (default is dynamic)
+//           temperature: 0.7, // Default temperature for randomness
+//           top_p: 0.9, // Default top-p sampling value
+//           top_k: 50, // Default top-k sampling value
+//           stopSequences: [] // Optional stop sequences if needed
+//         },
+//       };
+
+//     // Invoke the model with the payload and wait for the response.
+//     const command = new InvokeModelCommand({
+//         modelId: "us.anthropic.claude-3-7-sonnet-20250219-v1:0", // Replace with your model ID
+//         contentType: "application/json",
+//         accept: "application/json",
+//         body: JSON.stringify(payload)
+//       });
+//     const apiResponse = await client.send(command);
+
+//     // Decode and return the response(s)
+//     const decodedResponseBody = new TextDecoder("utf-8").decode(apiResponse.body);
+//     const responseBody = JSON.parse(decodedResponseBody);
+//     logger.info(`response of alt text: ${responseBody.output.message}`);
+//     return responseBody.output.message;
+// };
+
+
+const invokeNovaModel = async (
     prompt = "generate alt text for this image",
     imageBuffer = null,
-) => {
+  ) => {
     // Create a new Bedrock Runtime client instance.
     const client = new BedrockRuntimeClient({ region: "us-east-1" });
     const model_arn_image = process.env.model_arn_image;
     
     // Convert the image buffer to a base64-encoded string
     const inputImageBase64 = imageBuffer ? imageBuffer.toString('base64') : null;
-
+  
     // Prepare the payload for the model.
     const payload = {
         system: [
@@ -114,22 +177,351 @@ const invokeModel = async (
           stopSequences: [] // Optional stop sequences if needed
         },
       };
-
+  
     // Invoke the model with the payload and wait for the response.
     const command = new InvokeModelCommand({
-        modelId: "us.anthropic.claude-3-7-sonnet-20250219-v1:0", // Replace with your model ID
+        modelId: "amazon.nova-pro-v1:0", // Replace with your model ID
         contentType: "application/json",
         accept: "application/json",
         body: JSON.stringify(payload)
       });
     const apiResponse = await client.send(command);
-
+  
     // Decode and return the response(s)
     const decodedResponseBody = new TextDecoder("utf-8").decode(apiResponse.body);
     const responseBody = JSON.parse(decodedResponseBody);
-    logger.info(`response of alt text: ${responseBody.output.message}`);
+    console.log(`response of alt text: ${responseBody.output.message}`);
     return responseBody.output.message;
-};
+  };
+  
+ /**
+  * Resize an image buffer using Promises.
+  * @param {Buffer} imageBuffer - The input image buffer.
+  * @returns {Promise<Buffer>} - A Promise that resolves to the resized image buffer.
+  */
+ function resizeImageBuffer(imageBuffer) {
+    return sharp(imageBuffer)
+      .resize({
+        width: 1120,
+        height: 1120,
+        fit: 'inside', // Ensures the aspect ratio is maintained
+        withoutEnlargement: true, // Prevents upscaling if the image is smaller than 1120x1120
+      })
+      .toBuffer(); // Returns the resized image as a buffer
+  }
+  
+  /**
+   * Invokes the Bedrock AI model (Llama) to generate alt text for an image.
+   * The function processes the image buffer and sends it along with a prompt to the model.
+   * @param {string} [prompt="Describe this image"] - The prompt to guide the model in generating alt text.
+   * @param {Buffer} [imageBuffer=null] - The buffer containing the image data.
+   * @returns {Promise<string>} - A promise that resolves with the generated alt text.
+   */
+  async function invokeLlamaModel(prompt = "Describe this image", imageBuffer = null) {
+    if (!imageBuffer) {
+      throw new Error("Image buffer is null. Please provide a valid image file.");
+    }
+  
+    const client = new BedrockRuntimeClient({ region: "us-east-1" });
+  
+    try {
+      // Resize the image buffer
+      const resizedImageBuffer = await resizeImageBuffer(imageBuffer);
+  
+      // Prepare messages for the model
+      const messages = [
+        {
+          role: "user",
+          content: [
+            { text: prompt },
+            {
+              image: {
+                format: "png", // Replace with your file format if different
+                source: { bytes: resizedImageBuffer },
+              },
+            },
+          ],
+        },
+      ];
+  
+      // Set inference configuration
+      const inferenceConfig = {
+        maxTokens: 4096,
+        temperature: 0,
+        topP: 0.1,
+      };
+  
+      // Create and send the command to the model
+      const command = new ConverseCommand({
+        modelId: "us.meta.llama3-2-90b-instruct-v1:0",
+        messages,
+        inferenceConfig,
+      });
+  
+      const response = await client.send(command);
+  
+      // Extract and return the model's response
+      const outputMessage = response.output.message;
+      return outputMessage;
+    } catch (error) {
+      console.error("An error occurred while invoking the Llama model:", error.message || error);
+      throw error;
+    }
+  }
+  
+  
+  const invokeNovaModelWithMathFormula = async (
+    prompt = "generate alt text for this math formula given in latex format"
+  ) => {
+    // Create a new Bedrock Runtime client instance.
+    const client = new BedrockRuntimeClient({ region: "us-east-1" });
+    const model_arn_image = process.env.model_arn_image;
+    
+  
+    // Prepare the payload for the model.
+    const payload = {
+        system: [
+          {
+            text: "You are an intelligent assistant capable of analyzing math formula and answering questions about them."
+          }
+        ],
+        messages: [
+          {
+            role: "user", // First turn should always be from the user
+            content: [
+              {
+                text: prompt // Add your prompt about the image here
+              }
+            ]
+          }
+        ],
+        inferenceConfig: {
+          max_new_tokens: 1000, // Adjust as needed (default is dynamic)
+          temperature: 0.7, // Default temperature for randomness
+          top_p: 0.9, // Default top-p sampling value
+          top_k: 50, // Default top-k sampling value
+          stopSequences: [] // Optional stop sequences if needed
+        },
+      };
+  
+    // Invoke the model with the payload and wait for the response.
+    const command = new InvokeModelCommand({
+        modelId: "amazon.nova-pro-v1:0", // Replace with your model ID
+        contentType: "application/json",
+        accept: "application/json",
+        body: JSON.stringify(payload)
+      });
+    const apiResponse = await client.send(command);
+  
+    // Decode and return the response(s)
+    const decodedResponseBody = new TextDecoder("utf-8").decode(apiResponse.body);
+    const responseBody = JSON.parse(decodedResponseBody);
+    console.log(`response of alt text: ${responseBody.output.message}`);
+    return responseBody.output.message;
+  };
+  
+  
+  /**
+   * Invokes the Bedrock AI model (Llama) to generate alt text for an image.
+   * The function processes the image buffer and sends it along with a prompt to the model.
+   * @param {string} [prompt="Describe this image"] - The prompt to guide the model in generating alt text.
+   * @param {Buffer} [imageBuffer=null] - The buffer containing the image data.
+   * @returns {Promise<string>} - A promise that resolves with the generated alt text.
+   */
+  async function invokeLlamaModelwithMathFormula(prompt = "Describe this math formula given in latex format") {
+  
+    const client = new BedrockRuntimeClient({ region: "us-east-1" });
+
+    try {
+  
+      // Prepare messages for the model
+      const messages = [
+        {
+          role: "user",
+          content: [
+            { text: prompt }
+          ],
+        },
+      ];
+  
+      // Set inference configuration
+      const inferenceConfig = {
+        maxTokens: 4096,
+        temperature: 0,
+        topP: 0.1,
+      };
+  
+      // Create and send the command to the model
+      const command = new ConverseCommand({
+        modelId: "us.meta.llama3-2-90b-instruct-v1:0",
+        messages,
+        inferenceConfig,
+      });
+  
+      const response = await client.send(command);
+  
+      // Extract and return the model's response
+      const outputMessage = response.output.message;
+      return outputMessage;
+    } catch (error) {
+      console.error("An error occurred while invoking the Llama model:", error.message || error);
+      throw error;
+    }
+  }
+  
+  async function invokeLlamaModel(prompt = "Describe this image", imageBuffer = null) {
+    if (!imageBuffer) {
+      throw new Error("Image buffer is null. Please provide a valid image file.");
+    }
+  
+    const client = new BedrockRuntimeClient({ region: "us-east-1" });
+  
+    try {
+      // Resize the image buffer
+      const resizedImageBuffer = await resizeImageBuffer(imageBuffer);
+  
+      // Prepare messages for the model
+      const messages = [
+        {
+          role: "user",
+          content: [
+            { text: prompt },
+            {
+              image: {
+                format: "png", // Replace with your file format if different
+                source: { bytes: resizedImageBuffer },
+              },
+            },
+          ],
+        },
+      ];
+  
+      // Set inference configuration
+      const inferenceConfig = {
+        maxTokens: 4096,
+        temperature: 0,
+        topP: 0.1,
+      };
+  
+      // Create and send the command to the model
+      const command = new ConverseCommand({
+        modelId: "us.meta.llama3-2-90b-instruct-v1:0",
+        messages,
+        inferenceConfig,
+      });
+  
+      const response = await client.send(command);
+  
+      // Extract and return the model's response
+      const outputMessage = response.output.message;
+      return outputMessage;
+    } catch (error) {
+      console.error("An error occurred while invoking the Llama model:", error.message || error);
+      throw error;
+    }
+  }
+  
+  
+  
+  const invokeAnthorpicModel = async (prompt = "generate alt text for this image", imageBuffer = null) => {
+    if (!imageBuffer) {
+      throw new Error("Image buffer is null. Please provide a valid image file.");
+    }
+  
+    const client = new BedrockRuntimeClient({ region: "us-east-1" });
+  
+    const inputImageBase64 = Buffer.from(imageBuffer).toString('base64');
+  
+    const payload = {
+      anthropic_version: "bedrock-2023-05-31",
+      system: "You are an intelligent assistant capable of analyzing images and answering questions about them.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: "image/png",
+                data: inputImageBase64
+              }
+            },
+            {
+              type: "text",
+              text: prompt
+            }
+          ]
+        }
+      ],
+      max_tokens: 1000,
+      temperature: 0.7,
+      top_p: 0.9,
+      top_k: 50,
+      stop_sequences: []
+    };
+  
+    const command = new InvokeModelCommand({
+      modelId: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify(payload)
+    });
+  
+    const apiResponse = await client.send(command);
+    
+    const decodedResponseBody = new TextDecoder("utf-8").decode(apiResponse.body);
+    const responseBody = JSON.parse(decodedResponseBody);
+  
+    console.log("Response from Bedrock:", responseBody.content[0].text);
+    
+    return responseBody;
+  };
+
+  const invokeAnthorpicModelWithMathFormula = async (prompt = "generate alt text for this math formula given in latex format") => {
+
+  
+    const client = new BedrockRuntimeClient({ region: "us-east-1" });
+  
+  
+    const payload = {
+      anthropic_version: "bedrock-2023-05-31",
+      system: "You are an intelligent assistant capable of analyzing images and answering questions about them.",
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: prompt
+            }
+          ]
+        }
+      ],
+      max_tokens: 1000,
+      temperature: 0.7,
+      top_p: 0.9,
+      top_k: 50,
+      stop_sequences: []
+    };
+  
+    const command = new InvokeModelCommand({
+      modelId: "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
+      contentType: "application/json",
+      accept: "application/json",
+      body: JSON.stringify(payload)
+    });
+  
+    const apiResponse = await client.send(command);
+    
+    const decodedResponseBody = new TextDecoder("utf-8").decode(apiResponse.body);
+    const responseBody = JSON.parse(decodedResponseBody);
+  
+    console.log("Response from Bedrock:", responseBody.content[0].text);
+    
+    return responseBody;
+  };
+
 
 /**
  * Generates WCAG 2.1-compliant alt text for an image based on its content and the provided prompt.
@@ -140,11 +532,12 @@ const invokeModel = async (
  * @returns {Promise<string>} - A promise that resolves with the generated alt text in JSON format.
  * @throws {Error} - Throws an error if generating the alt text fails.
  */
-async function generateAltText(imageObject, imageBuffer) {
+async function generateAltText(imageObject, imageBuffer, modelId) {
     logger.info(`imageObject in generate alt text function: ${imageObject.id}`);
     logger.info(`imageObject in generate alt text function: ${imageObject.context_json.context}`);
-
+    logger.info(`Math formula in generate alt text function: ${imageObject.math_formula}`);
     
+
     const prompt = `Generate WCAG 2.1-compliant alt text for an image embedded in a PDF document. The output must be in strict JSON format as follows:
     {"${imageObject.id}": "Alternative text"}
     Follow these guidelines to create appropriate and effective alt text:
@@ -210,11 +603,30 @@ async function generateAltText(imageObject, imageBuffer) {
 
     Now, based on the above guidelines, generate the appropriate alt text in the required JSON format.
     `;
+    
 
     try {
-        const response = await invokeModel(prompt, imageBuffer);
-        
-        return response.content[0].text;
+        logger.info(`Generating alt text`);
+        if (modelId.includes("nova")){
+            logger.info(`Generating alt text using Nova model`);
+            const response = await invokeNovaModel(prompt, imageBuffer);
+            return response.content[0].text;
+        }
+        else if (modelId.includes("anthropic")){
+            logger.info(`Generating alt text using Anthropic model`);
+            const response = await invokeAnthorpicModel(prompt, imageBuffer);
+            return response.content[0].text;
+        }
+        else if (modelId.includes("llama")){
+            logger.info(`Generating alt text using Llama model`);
+            const response = await invokeLlamaModel(prompt, imageBuffer);
+            return response.content[0].text;
+        }
+        else {
+            logger.info(`Generating alt text using default model`);
+            const response = await invokeNovaModel(prompt, imageBuffer);
+            return response.content[0].text;
+        }
     } catch (error) {
       
         throw error;
@@ -302,6 +714,98 @@ async function generateAltTextForLink(url) {
         throw error;
     }
 }
+
+async function generateAltTextWithMathFormula(imageObject, imageBuffer, modelId) {
+  logger.info(`imageObject in generate alt text function: ${imageObject.id}`);
+  logger.info(`imageObject in generate alt text function: ${imageObject.context_json.context}`);
+  logger.info(`Math formula in generate alt text function: ${imageObject.math_formula}`);
+  const prompt = `Generate WCAG 2.1-compliant alt text for an image embedded in a PDF document. The output must be in strict JSON format as follows:
+  {"${imageObject.id}": "Alternative text"}
+  Follow these guidelines to create appropriate and effective alt text for given math formula in LATEX FORMAT:
+
+  <LATEX FORMULA OF INTEREST>${imageObject.math_formula}</LATEX FORMULA OF INTEREST>
+    
+  Below are the instructions you must follow:
+  1. WCAG 2.1 Compliance:
+     a) Informative:
+        - Provide a concise description of essential information
+        - For complex formulas, summarize key data or direct to full information
+     b) Decorative Formulas:
+        - Use empty alt text: alt=""
+  2. Equation-Specific Alt Text Guidance:
+      - Spell out every symbol, number, and operator.
+      - Use explicit phrases such as "open parenthesis", "close parenthesis", "plus", "minus", "times", "divided by", "equals", "to the power of", etc.
+      - **Basic Example:** Instead of "2(4y+1)=3y", write "2 open parenthesis 4 y plus 1 close parenthesis equals 3 y."
+      - **Complex Example:** For an equation such as: f(t) = k1 e^(2t) sin(π t) + k2 t^3,
+          the alt text should be: "f open parenthesis t close parenthesis equals k1 e to the power of 2 t sin of pi t plus k2 t to the power of 3."
+ - **Power Notation Accuracy:** Ensure that any exponentiation is represented accurately. Always check that the power formatting is preserved correctly by using the phrase "to the power of" immediately after the base value, followed by the exponent. Do not drop, alter, or misplace any exponent values. USER SHOULD GET EXACT IDEA OF WHERE POWER IS BEGINNING AND ENDING.
+ - **Subscript** Ensure that you properly describe subscript and superscript. For an example for euqation Fᵢ = mᵢ a², you should give the alt text as "F with subscript i end subscript equals m with subscript i end subscript a to the power of 2". Another example: Fₐ/ₓ = mₐ/ₓ a², you should give the alt text as "F with subscript a divided by x end subscript equals m with subscript a divided by x end subscript a to the power of 2"
+ - *Superscript*: Ensure that you properly describe the superscript. For example, Fₐ/ₓ^(n+1) = mᵢⱼ^k + a^b, you should give the alt text as "F with subscript a divided by x end subscript with superscript n plus 1 end superscript equals m with subscript i j end subscript with superscript k end superscript plus a with superscript b end superscript (Note: you will have a picture of the equation and not it might not the represented in the exact way as given in the examples here)."
+ - **Variable Names:** Always use the exact variable names and symbols as provided in the original equation. Do not substitute or alter them (for example, if the equation includes the lambda symbol, retain it exactly as given).
+  4. Output Guidelines:
+     - Keep alt text short, clear, and relevant
+     - Ensure it enhances accessibility for assistive technology users
+  
+  YOU MUST FOLLOW EACH INSTRUCTION STRICTLY:
+  - <INSTRUCTION>Provide only the JSON output with no additional explanation</INSTRUCTION>
+  - <INSTRUCTION>Do not use unnecessary phrases like "Certainly!" or "Here's the alt text:"</INSTRUCTION>
+  - <INSTRUCTION>If you're unsure about specific details, focus on describing what you can clearly determine from the context provided</INSTRUCTION>
+  - <INSTRUCTION>MAKE SURE YOU DO NOT USE IMAGE NAME OR NUMBER AS THEIR ID IN THE JSON RESPONSE [STRICTLY]</INSTRUCTION>
+  - <INSTRUCTION>MAKE SURE YOU USE CONTENT TO IMPROVE THE QUALITY OF ALT TEXT AND NOT GENERATE A SUMMARY OF CONTEXT IF THE MATH FORMULA IS EMPTY OR NOT RELEVANT</INSTRUCTION>
+
+  <PAGE CONTENT AND CONTEXT INFORMATION>
+  The page content and math formula of interest is provided below. This is the whole page content and wherever you see "<OTHER IMAGE>" tag, these are other images on the page. The main MATH FORMULA is the one with the tag "<IMAGE INTERESTED>" [DO NOT USE THIS AS THE OBJECT ID IN THE JSON]. DONT THINK WHY MATH FORMULA IS REPRESENTED INSIDE IMAGE INTERESTED TAGS.
+  NOW, USE THIS CONTENT TO GENERATE ALT TEXT BY FOLLOWING THE BELOW STEPS:
+  - <STEP1> First determine where our math formula of interest is on the page </STEP1>
+  - <STEP2> Determine what is the relevant text for our math formula of interest by considering its location in the whole page </STEP2>
+  - <STEP3> If there are multiple images or math formulas on the same page, determine which text is relevant for our math formula of interest and which is not </STEP3>
+  - <STEP4> Decide carefully which text to use, considering the MATH FORMULA's before and after context [STRICT STEP]</STEP4>
+
+  <IMPORTANT THING>
+  In cases where there is text on both sides of our math formula of interest, analyze the overall page content and decide which portion to use. One method may be:
+  - <STEP 1> Identify other images or math formulas and the text associated with them </STEP 1>
+  - <STEP 2> Assume that text associated with other images or math formulas is not related to our math formula of interest </STEP 2>
+  </IMPORTANT THING>
+
+  <FEEDBACK>
+  You tend to make mistakes when multiple images or math formulas are present with small amounts of text in between. In such cases, choose the correct text for the alt text.
+  *ALERT* Be careful when you are describing the subscript and superscripts in the alt text. Make sure you are describing them correctly. for subscripts you are making so many mistakes. you must firts decide if this is the part of subscript or not and then go ahead.
+  *ALERT* Always mention end of superscript and subscript, you are not describing end of subscript and superscript properly.
+  </FEEDBACK>
+  <ACTUAL CONTENT>
+  ${imageObject.context_json.context}
+  <ACTUAL CONTENT>
+
+  Now, based on the above guidelines, generate the appropriate alt text in the required JSON format.`;
+
+  try {
+    logger.info(`Generating alt text`);
+    if (modelId.includes("nova")){
+        logger.info(`Generating alt text using Nova model`);
+        const response = await invokeNovaModelWithMathFormula(prompt);
+        return response.content[0].text;
+    }
+    else if (modelId.includes("anthropic")){
+        logger.info(`Generating alt text using Anthropic model`);
+        const response = await invokeAnthorpicModelWithMathFormula(prompt);
+        return response.content[0].text;
+    }
+    else if (modelId.includes("llama")){
+        logger.info(`Generating alt text using Llama model`);
+        const response = await invokeLlamaModelwithMathFormula(prompt);
+        return response.content[0].text;
+    }
+    else {
+        logger.info(`Generating alt text using default model`);
+        const response = await invokeNovaModelWithMathFormula(prompt);
+        return response.content[0].text;
+    }
+} catch (error) {
+  
+    throw error;
+}
+}
+
 
 /**
  * Modifies a PDF by adding alt text to images and links based on the provided data.
@@ -427,6 +931,35 @@ async function startProcess() {
     const filebasename = process.env.S3_FILE_KEY.split("/")[1];
    
     logger.info(`Filename: ${filebasename} | Text File Key: ${textFileKey}, Bucket Name: ${bucketName}`);
+
+    // Read model configuration file from S3 (if available)
+    let modelConfig = {};
+    try {
+        const s3Client = new S3Client({ region: "us-east-1" });
+        const modelConfigKey = `modelconfigs/${filebasename}_modelconfig.json`;
+        const configCommand = new GetObjectCommand({
+            Bucket: bucketName,
+            Key: modelConfigKey,
+        });
+        const { Body: configBody } = await s3Client.send(configCommand);
+        // Stream the body contents to a buffer
+        const configChunks = [];
+        await pipeline(configBody, async function* (source) {
+            for await (const chunk of source) {
+                configChunks.push(chunk);
+            }
+        });
+        const configBuffer = Buffer.concat(configChunks);
+        const modelConfigContent = configBuffer.toString('utf8');
+        modelConfig = JSON.parse(modelConfigContent);
+        console.log(modelConfig);
+        
+        logger.info(`Filename: ${filebasename} | Model config loaded from S3 key ${modelConfigKey}`);
+    } catch (err) {
+       console.error(` Error loading model config from S3: ${err}`);
+        modelConfig = {};
+    }
+    const modelId = modelConfig.modelId || "no-model";
     try {
    
         const getObjectParams = {
@@ -461,8 +994,9 @@ async function startProcess() {
                     id: row.objid,
                     path: `temp/${splitKey[1]}/output_autotag/images/${splitKey.pop()}_${row.img_path}`,
                     context_json: {
-                        context: row.context,
+                        context: row.context
                     },
+                    math_formula: row.math_formula
                 };
             });
         } catch (err) {
@@ -502,7 +1036,12 @@ async function startProcess() {
                 logger.info(`Filename: ${filebasename} | Local File Path: ${localFilePath}`);
                 fs_1.writeFileSync(localFilePath, fileBuffer);
                 const image_Buffer = await fs.readFile(localFilePath);
-                const response = await generateAltText(imageObject, image_Buffer);
+                let response = null;
+                if(imageObject.math_formula == "no"){
+                  response = await generateAltText(imageObject, image_Buffer, modelId);}
+                else{
+                  response = await generateAltTextWithMathFormula(imageObject, image_Buffer, modelId);
+                }
                 logger.info(`Filename: ${filebasename} | Response:${response}`);
                 Object.assign(combinedResults, JSON.parse(response));
             } catch (error) {

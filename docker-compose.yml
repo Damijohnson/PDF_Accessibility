@@ -1,25 +1,31 @@
-version: '3.8'
+version: '3.9'
 
 services:
   lambda-add-title:
+    platform: linux/amd64
     build:
       context: ./lambda/add_title
       dockerfile: Dockerfile
+      
     image: lambda-add-title:latest
 
   lambda-accessibility-checker-before:
+    platform: linux/amd64
     build:
       context: ./lambda/accessibility_checker_before_remidiation
       dockerfile: Dockerfile
+     
     image: lambda-accessibility-checker-before:latest
 
   lambda-accessibility-checker-after:
+    platform: linux/amd64
     build:
       context: ./lambda/accessability_checker_after_remidiation
       dockerfile: Dockerfile
     image: lambda-accessibility-checker-after:latest
 
   lambda-split-pdf:
+    platform: linux/amd64
     build:
       context: ./lambda/split_pdf
       dockerfile: Dockerfile
