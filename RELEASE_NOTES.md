@@ -1,5 +1,24 @@
 # Release Notes
 
+## Version Update: V3  
+**Release Date:** 29 Apr 2025  
+
+---
+
+## Key Updates:
+
+### 1. New Feature: Pix2Tex Integration  
+- Integrated Pix2Tex for improved OCR capabilities for mathamatical images.
+
+### 2. Multiple LLM Support  
+- Added support for multiple Large Language Models to enhance processing flexibility.
+
+### 3. Packaging Enhancements  
+- Adopted Docker Compose to facilitate easier application deployment.
+
+
+# Previous Versions:
+
 ## Version Update: V2  
 **Release Date:** 14 Feb 2025  
 
