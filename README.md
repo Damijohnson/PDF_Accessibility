@@ -49,6 +49,7 @@ Ensure your project has the following structure:
      
 2. **Download Docker**:
    - Make sure you have docker installed on your system (you can find out more here about how to download the docker on your system: https://www.docker.com/products/docker-desktop/)
+   - Make sure docker is running on your system.
      
 3. **Run the Commands Below**:
   a. Docker Build
