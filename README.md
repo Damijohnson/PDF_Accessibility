@@ -1,4 +1,4 @@
-# PDF Accessibility Solutions
+# PDF Accessibility Solutions - Dami 
 
 This repository provides two complementary solutions for PDF accessibility:
 
